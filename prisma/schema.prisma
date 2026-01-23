@@ -77,29 +77,31 @@ model business_employees {
 }
 
 model businesses {
-  id                 String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  participant_id     String?              @db.Uuid
-  legacy_tkm_id      String?              @db.VarChar(100)
-  name               String?              @db.VarChar(255)
-  sector             String?              @db.VarChar(100)
-  type               String?              @db.VarChar(100)
-  description        String?
-  main_product       String?              @db.VarChar(200)
-  location_ownership String?              @db.VarChar(100)
-  nib_number         String?              @db.VarChar(50)
-  marketing_channels String?
-  marketing_areas    String?
-  partner_name       String?              @db.VarChar(200)
-  partner_count      Int?
-  revenue_per_period Decimal?             @db.Decimal(15, 2)
-  profit_per_period  Decimal?             @db.Decimal(15, 2)
-  production_volume  Int?
-  production_unit    String?              @db.VarChar(50)
-  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime?            @default(now()) @db.Timestamptz(6)
-  business_documents business_documents[]
-  business_employees business_employees[]
-  participants       participants?        @relation(fields: [participant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                  String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  participant_id      String?              @db.Uuid
+  legacy_tkm_id       String?              @db.VarChar(100)
+  name                String?              @db.VarChar(255)
+  sector              String?              @db.VarChar(100)
+  type                String?              @db.VarChar(100)
+  description         String?
+  main_product        String?              @db.VarChar(200)
+  location_ownership  String?              @db.VarChar(100)
+  nib_number          String?              @db.VarChar(50)
+  marketing_channels  String?
+  marketing_areas     String?
+  marketing_countries String?
+  detailed_location   String?
+  partner_name        String?              @db.VarChar(200)
+  partner_count       Int?
+  revenue_per_period  Decimal?             @db.Decimal(15, 2)
+  profit_per_period   Decimal?             @db.Decimal(15, 2)
+  production_volume   Int?
+  production_unit     String?              @db.VarChar(50)
+  created_at          DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?            @default(now()) @db.Timestamptz(6)
+  business_documents  business_documents[]
+  business_employees  business_employees[]
+  participants        participants?        @relation(fields: [participant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([legacy_tkm_id], map: "idx_businesses_tkm")
 }
@@ -283,6 +285,11 @@ model participants {
   reason_not_willing     String?
   status_applicant       String?                 @db.VarChar(255)
   reason_drop            String?
+  submission_status      String?                 @db.VarChar(50)
+  submission_date        DateTime?               @db.Timestamptz(6)
+  registration_date      DateTime?               @db.Timestamptz(6)
+  id_pendaftar           String?                 @db.VarChar(100)
+  link_detail_tkm        String?
   created_at             DateTime?               @default(now()) @db.Timestamptz(6)
   updated_at             DateTime?               @default(now()) @db.Timestamptz(6)
   businesses             businesses[]
@@ -311,23 +318,28 @@ model universities {
 }
 
 model profiles {
-  id              String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id         String?        @unique @db.Uuid
-  university_id   String?        @db.Uuid
-  full_name       String?        @db.VarChar(255)
-  id_number       String?        @db.VarChar(20)
-  whatsapp_number String?        @db.VarChar(20)
-  gender          String?        @db.VarChar(10)
-  avatar_url      String?
-  pob             String?        @db.VarChar(255)
-  dob             DateTime?      @db.Date
-  created_at      DateTime?      @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime?      @default(now()) @db.Timestamptz(6)
-  legacy_id       BigInt?
-  addresses       addresses[]
-  participants    participants[]
-  users           users?         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  universities    universities?  @relation(fields: [university_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  id                String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id           String?        @unique @db.Uuid
+  university_id     String?        @db.Uuid
+  full_name         String?        @db.VarChar(255)
+  id_number         String?        @db.VarChar(20)
+  whatsapp_number   String?        @db.VarChar(20)
+  kk_number         String?        @db.VarChar(25)
+  age               Int?
+  social_media_type String?        @db.VarChar(50)
+  social_media_name String?        @db.VarChar(100)
+  social_media_link String?
+  gender            String?        @db.VarChar(10)
+  avatar_url        String?
+  pob               String?        @db.VarChar(255)
+  dob               DateTime?      @db.Date
+  created_at        DateTime?      @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime?      @default(now()) @db.Timestamptz(6)
+  legacy_id         BigInt?
+  addresses         addresses[]
+  participants      participants[]
+  users             users?         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  universities      universities?  @relation(fields: [university_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
 }
 
 model provinces {

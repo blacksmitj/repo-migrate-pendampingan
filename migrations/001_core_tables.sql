@@ -68,6 +68,11 @@ CREATE TABLE profiles (
     full_name VARCHAR(255),
     id_number VARCHAR(20), -- NIK
     whatsapp_number VARCHAR(20),
+    kk_number VARCHAR(25),
+    age INT,
+    social_media_type VARCHAR(50),
+    social_media_name VARCHAR(100),
+    social_media_link TEXT,
     gender VARCHAR(10),
     avatar_url TEXT,
     pob VARCHAR(255), -- Place of Birth

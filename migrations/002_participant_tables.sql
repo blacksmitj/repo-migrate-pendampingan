@@ -33,6 +33,11 @@ CREATE TABLE participants (
     reason_not_willing TEXT,
     status_applicant VARCHAR(255),
     reason_drop TEXT,
+    submission_status VARCHAR(50),
+    submission_date TIMESTAMP WITH TIME ZONE,
+    registration_date TIMESTAMP WITH TIME ZONE,
+    id_pendaftar VARCHAR(100),
+    link_detail_tkm TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -51,6 +56,8 @@ CREATE TABLE businesses (
     nib_number VARCHAR(50),
     marketing_channels TEXT,
     marketing_areas TEXT,
+    marketing_countries TEXT,
+    detailed_location TEXT,
     partner_name VARCHAR(200),
     partner_count INTEGER,
     revenue_per_period DECIMAL(15, 2),
