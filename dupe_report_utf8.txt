@@ -1,0 +1,16 @@
+﻿[dotenv@17.2.3] injecting env (10) from .env -- tip: ΓÜÖ∩╕Å  suppress all logs with { quiet: true }
+=== LAPORAN DETAIL DUPLIKASI NIK ===
+
+1. NIK yang Terdaftar sebagai MENTOR dan PESERTA:
+NIK: 1171023107860004 | Nama User: Fauzi | Nama Peserta: Fauzi
+NIK: 7571020611720001 | Nama User: SYAHBUDIN RAHIM | Nama Peserta: SYAHBUDIN RAHIM
+NIK: 3217015705780001 | Nama User: Dedeh Suryati | Nama Peserta: Dedeh Suryati
+NIK: 3305044608010004 | Nama User: DEWI NGAISAH | Nama Peserta: DEWI NGAISAH
+
+2. NIK yang Duplikat di Internal MENTOR (Satu NIK punya >1 akun):
+NIK: 1491548541841848747 | Nama-nama Akun: super_admin & admin_test & pendamping_test (3 kali)
+NIK: 3305121807010004 | Nama-nama Akun: Muhamad Nailul Hikam & Muhamad Nailul Hikam (2 kali)
+NIK: 7317161008910004 | Nama-nama Akun: Hervian Septiandi Amir & Hervian Septiandi Amir (2 kali)
+
+3. NIK yang Duplikat di Internal PESERTA (Satu NIK terdaftar >1 kali):
+NIK: 3174065710770005 | Nama-nama di Daftar: LINDA SARI & LINDA SARI tes & LINDA SARI tes 2 (3 kali)
