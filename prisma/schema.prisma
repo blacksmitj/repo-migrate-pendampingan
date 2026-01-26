@@ -25,6 +25,10 @@ model addresses {
   regency_id       String?    @db.VarChar(4)
   district_id      String?    @db.VarChar(6)
   village_id       String?    @db.VarChar(10)
+  province_name    String?    @db.VarChar(255)
+  regency_name     String?    @db.VarChar(255)
+  district_name    String?    @db.VarChar(255)
+  village_name     String?    @db.VarChar(255)
   address_line     String?
   postal_code      String?    @db.VarChar(10)
   longitude        Decimal?   @db.Decimal(11, 8)

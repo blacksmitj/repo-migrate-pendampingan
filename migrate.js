@@ -198,6 +198,9 @@ async function migrate() {
                 `, [p.nama, p.no_whatsapp, p.no_kk, p.umur, p.jenis_medsos, p.nama_medsos, p.link_media_sosial, gender, p.tempat_lahir, p.tgl_lahir, p.link_pas_foto, prId]);
             }
 
+            const sLower = p.status?.toLowerCase();
+            const status = sLower === 'diterima' ? 'active' : (sLower === 'cadangan' ? 'deactive' : p.status);
+
             const id = uuidv4();
             await pgClient.query(`
                 INSERT INTO participants (
@@ -207,7 +210,7 @@ async function migrate() {
                     created_at, updated_at
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
                 ON CONFLICT DO NOTHING`,
-                [id, prId, batchMap.get(p.batch_pembekalan), null, p.id_tkm?.toString(), p.status, p.pendidikan_terakhir, 
+                [id, prId, batchMap.get(p.batch_pembekalan), null, p.id_tkm?.toString(), status, p.pendidikan_terakhir, 
                  p.penyandang_disabilitas === 1, p.jenis_disabilitas, p.aktivitas_saat_ini,
                  p.apakah_sudah_submit_pendaftaran, p.tanggal_submit_pendaftaran, p.tanggal_daftar, p.id_pendaftar, p.link_detail_tkm,
                  p.created_at || new Date(), p.updated_at || new Date()]);
@@ -217,41 +220,53 @@ async function migrate() {
 
             // Create Address for Participant from KTP info
             if (p.alamat_ktp || p.kota_ktp || p.provinsi_ktp) {
-                const provId = p.provinsi_ktp ? provinceByName.get(p.provinsi_ktp.toUpperCase()) : null;
-                const regId = p.kota_ktp ? regencyByName.get(p.kota_ktp.toUpperCase()) : null;
-                const distId = (regId && p.kecamatan_ktp) ? districtLookup.get(`${regId}_${p.kecamatan_ktp.toUpperCase()}`) : null;
+                const provId = null;
+                const regId = null;
+                const distId = null;
                 
                 await pgClient.query(`
                     INSERT INTO addresses (
-                        id, profile_id, label, province_id, regency_id, district_id, address_line, postal_code, created_at, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`,
-                    [uuidv4(), prId, 'KTP', provId, regId, distId, p.alamat_ktp, p.kode_pos_ktp, p.created_at || new Date(), p.updated_at || new Date()]);
+                        id, profile_id, label, province_id, regency_id, district_id, 
+                        province_name, regency_name, district_name,
+                        address_line, postal_code, created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT DO NOTHING`,
+                    [uuidv4(), prId, 'KTP', provId, regId, distId, 
+                     p.provinsi_ktp, p.kota_ktp, p.kecamatan_ktp,
+                     p.alamat_ktp, p.kode_pos_ktp, p.created_at || new Date(), p.updated_at || new Date()]);
             }
 
             // Create Business Address for Participant (label 'USAHA')
             if (p.alamat_usaha || p.kota_usaha || p.provinsi_usaha) {
-                const provId = p.provinsi_usaha ? provinceByName.get(p.provinsi_usaha.toUpperCase()) : null;
-                const regId = p.kota_usaha ? regencyByName.get(p.kota_usaha.toUpperCase()) : null;
-                const distId = (regId && p.kecamatan_usaha) ? districtLookup.get(`${regId}_${p.kecamatan_usaha.toUpperCase()}`) : null;
+                const provId = null;
+                const regId = null;
+                const distId = null;
                 
                 await pgClient.query(`
                     INSERT INTO addresses (
-                        id, profile_id, label, province_id, regency_id, district_id, address_line, postal_code, created_at, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`,
-                    [uuidv4(), prId, 'USAHA', provId, regId, distId, p.alamat_usaha, p.kode_pos_usaha, p.created_at || new Date(), p.updated_at || new Date()]);
+                        id, profile_id, label, province_id, regency_id, district_id, 
+                        province_name, regency_name, district_name,
+                        address_line, postal_code, created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT DO NOTHING`,
+                    [uuidv4(), prId, 'USAHA', provId, regId, distId, 
+                     p.provinsi_usaha, p.kota_usaha, p.kecamatan_usaha,
+                     p.alamat_usaha, p.kode_pos_usaha, p.created_at || new Date(), p.updated_at || new Date()]);
             }
 
             // Create Domicile Address for Participant (label 'DOMISILI')
             if (p.alamat_domisili || p.kota_domisili || p.provinsi_domisili) {
-                const provId = p.provinsi_domisili ? provinceByName.get(p.provinsi_domisili.toUpperCase()) : null;
-                const regId = p.kota_domisili ? regencyByName.get(p.kota_domisili.toUpperCase()) : null;
-                const distId = (regId && p.kecamatan_domisili) ? districtLookup.get(`${regId}_${p.kecamatan_domisili.toUpperCase()}`) : null;
+                const provId = null;
+                const regId = null;
+                const distId = null;
                 
                 await pgClient.query(`
                     INSERT INTO addresses (
-                        id, profile_id, label, province_id, regency_id, district_id, address_line, postal_code, created_at, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`,
-                    [uuidv4(), prId, 'DOMISILI', provId, regId, distId, p.alamat_domisili, p.kode_pos_domisili, p.created_at || new Date(), p.updated_at || new Date()]);
+                        id, profile_id, label, province_id, regency_id, district_id, 
+                        province_name, regency_name, district_name,
+                        address_line, postal_code, created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT DO NOTHING`,
+                    [uuidv4(), prId, 'DOMISILI', provId, regId, distId, 
+                     p.provinsi_domisili, p.kota_domisili, p.kecamatan_domisili,
+                     p.alamat_domisili, p.kode_pos_domisili, p.created_at || new Date(), p.updated_at || new Date()]);
             }
 
             // Emergency Contacts
