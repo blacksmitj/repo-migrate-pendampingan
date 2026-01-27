@@ -19,6 +19,7 @@ CREATE TABLE participants (
     profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
     batch_id UUID REFERENCES batches(id),
     group_id UUID REFERENCES participant_groups(id),
+    university_id UUID REFERENCES universities(id),
     legacy_tkm_id VARCHAR(100) UNIQUE, -- ID TKM from legacy system
     status VARCHAR(50), -- legacy status
     last_education VARCHAR(100),

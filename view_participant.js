@@ -165,6 +165,22 @@ async function getParticipantDetail(idTkm) {
     } else {
         console.log('(Belum ada pendamping)');
     }
+    
+    // Get University Pendamping
+    const { rows: univs } = await pg.query(`
+        SELECT u.name, u.city 
+        FROM participants p
+        JOIN universities u ON p.university_id = u.id
+        WHERE p.id = $1
+    `, [participant.id]);
+
+    console.log('\n========== UNIVERSITAS PENDAMPING ==========');
+    if (univs.length > 0) {
+        const u = univs[0];
+        console.log(`- ${u.name} (${u.city})`);
+    } else {
+        console.log('(Belum ada universitas pendamping)');
+    }
 
     // Get Emergency Contacts
     const { rows: contacts } = await pg.query(`
