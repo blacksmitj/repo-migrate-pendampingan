@@ -41,11 +41,23 @@ async function migrate() {
     });
     await pgClient.connect();
 
-    try {
-        console.log('--- Resetting Schema ---');
-        await pgClient.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-        await pgClient.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+    // Global map to avoid duplicate URLs in documents table: URL -> pg_id
+    const globalDocMap = new Map();
+    async function getOrCreateDocument(url, entityType, label, entityId) {
+        if (!url) return null;
+        if (globalDocMap.has(url)) {
+            const docId = globalDocMap.get(url);
+            // Even if doc exists, we might need to link it to a new logbook/report
+            return docId;
+        }
+        const docId = uuidv4();
+        await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+            [docId, entityId || uuidv4(), entityType, label, url]);
+        globalDocMap.set(url, docId);
+        return docId;
+    }
 
+<<<<<<< HEAD
         await runSqlFile(pgClient, 'migrations/001_core_tables.sql');
         await runSqlFile(pgClient, 'migrations/002_participant_tables.sql');
         await runSqlFile(pgClient, 'migrations/003_activity_tables.sql');
@@ -53,6 +65,24 @@ async function migrate() {
         await runSqlFile(pgClient, 'migrations/005_seed_roles.sql');
         await runSqlFile(pgClient, 'migrations/006_documents_relations.sql');
         await runSqlFile(pgClient, 'migrations/007_upload_reports.sql');
+=======
+    async function truncateTables() {
+        console.log('Cleaning up existing data...');
+        const tables = [
+            'activity_logs', 'addresses', 'business_documents', 'business_employees', 'businesses',
+            'emergency_contacts', 'logbook_attendees', 'logbook_documents', 'logbooks',
+            'mentor_participants', 'mentors', 'monthly_report_documents', 'monthly_reports',
+            'participant_documents', 'participants', 'profiles', 'upload_report_documents',
+            'upload_reports', 'users', 'universities', 'batches', 'participant_groups', 'documents'
+        ];
+        // Using TRUNCATE with CASCADE to handle foreign keys
+        await pgClient.query(`TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE`);
+    }
+
+    try {
+        await truncateTables();
+        console.log('--- Database Cleaned ---');
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
 
         const { rows: rRows } = await pgClient.query('SELECT id, name FROM roles');
         const roleMap = new Map(rRows.map(r => [r.name, r.id]));
@@ -77,29 +107,33 @@ async function migrate() {
 
         console.log('Migrating Universities...');
         const [mUnivs] = await mysqlConn.query('SELECT * FROM universities');
-        const univMap = new Map();
         for (const u of mUnivs) {
             const id = uuidv4();
+<<<<<<< HEAD
             await pgClient.query('INSERT INTO universities (id, name, address, city, province, legacy_id) VALUES ($1, $2, $3, $4, $5, $6)',
+=======
+            await pgClient.query('INSERT INTO universities (id, name, address, city, province, legacy_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (legacy_id) DO NOTHING', 
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
                 [id, u.name, u.alamat, u.city, u.province, u.id]);
-            univMap.set(u.id.toString(), id);
         }
+        const { rows: pgUnivs } = await pgClient.query('SELECT id, legacy_id FROM universities WHERE legacy_id IS NOT NULL');
+        const univMap = new Map(pgUnivs.map(u => [u.legacy_id.toString(), u.id]));
 
         console.log('Migrating Batches & Groups...');
         const [mBatches] = await mysqlConn.query('SELECT * FROM batch');
-        const batchMap = new Map();
         for (const b of mBatches) {
             const id = uuidv4();
-            await pgClient.query('INSERT INTO batches (id, code, start_date) VALUES ($1, $2, $3)', [id, b.batchID.toString(), b.startdate]);
-            batchMap.set(b.batchID.toString(), id);
+            await pgClient.query('INSERT INTO batches (id, code, start_date) VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING', [id, b.batchID.toString(), b.startdate]);
         }
+        const { rows: pgBatches } = await pgClient.query('SELECT id, code FROM batches');
+        const batchMap = new Map(pgBatches.map(b => [b.code, b.id]));
         const [mGroups] = await mysqlConn.query('SELECT * FROM group_peserta');
-        const groupMap = new Map();
         for (const g of mGroups) {
             const id = uuidv4();
-            await pgClient.query('INSERT INTO participant_groups (id, legacy_tkm_id, name) VALUES ($1, $2, $3)', [id, g.id_tkm_pemula_terakhir, g.nama_group]);
-            groupMap.set(g.id.toString(), id);
+            await pgClient.query('INSERT INTO participant_groups (id, legacy_tkm_id, name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [id, g.id_tkm_pemula_terakhir, g.nama_group]);
         }
+        const { rows: pgGroups } = await pgClient.query('SELECT id, name FROM participant_groups');
+        const groupMap = new Map(pgGroups.map(g => [g.name, g.id])); // Using name as key since legacy_id isn't one-to-one or clear
 
         console.log('Migrating Users...');
         const [mUsers] = await mysqlConn.query('SELECT * FROM users');
@@ -122,6 +156,7 @@ async function migrate() {
 
         const profileMap = new Map();
         const profileByNikMap = new Map();
+        const userToUnivMap = new Map(); // [NEW] maps legacy user_id to PG university UUID
         for (const p of mProfiles) {
             const uId = userMap.get(p.user_id.toString());
             if (uId) {
@@ -146,6 +181,14 @@ async function migrate() {
                     ]);
                 profileMap.set(p.id.toString(), id);
                 if (p.nik) profileByNikMap.set(p.nik, id);
+                
+                // [NEW] Map User ID to their University ID (if any)
+                if (p.univ_id) {
+                    const pgUnivId = univMap.get(p.univ_id.toString());
+                    if (pgUnivId) {
+                        userToUnivMap.set(p.user_id.toString(), pgUnivId);
+                    }
+                }
             }
         }
 
@@ -158,8 +201,12 @@ async function migrate() {
 
         console.log('Migrating Participants & creating missing Profiles...');
         const [mPeserta] = await mysqlConn.query('SELECT * FROM peserta');
-        const partMap = new Map();
-        const partByIdTkmMap = new Map();
+        
+        // Ensure we have current mappings from DB
+        const { rows: existingParts } = await pgClient.query('SELECT id, legacy_tkm_id FROM participants WHERE legacy_tkm_id IS NOT NULL');
+        const partByIdTkmMap = new Map(existingParts.map(p => [p.legacy_tkm_id, p.id]));
+        const partMap = new Map(); // Still need this for p.no based lookup
+
         for (const p of mPeserta) {
             let prId = profileByNikMap.get(p.nik);
 
@@ -174,11 +221,25 @@ async function migrate() {
                         social_media_type, social_media_name, social_media_link,
                         gender, pob, dob, avatar_url, created_at, updated_at
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+<<<<<<< HEAD
                     ON CONFLICT DO NOTHING`,
                     [prId, p.nama, p.nik, p.no_kk, p.umur, p.no_whatsapp,
                         p.jenis_medsos, p.nama_medsos, p.link_media_sosial,
                         gender, p.tempat_lahir, p.tgl_lahir, p.link_pas_foto, p.created_at || new Date(), p.updated_at || new Date()]);
                 if (p.nik) profileByNikMap.set(p.nik, prId);
+=======
+                    ON CONFLICT DO NOTHING`, 
+                    [prId, p.nama, p.nik, p.no_kk, p.umur, p.no_whatsapp, 
+                     p.jenis_medsos, p.nama_medsos, p.link_media_sosial,
+                     gender, p.tempat_lahir, p.tgl_lahir, p.link_pas_foto, p.created_at || new Date(), p.updated_at || new Date()]);
+
+                // If profiles insertion silently failed due to ON CONFLICT, we should fetch it
+                if (p.nik) {
+                   const { rows: prRows } = await pgClient.query('SELECT id FROM profiles WHERE id_number = $1', [p.nik]);
+                   if (prRows.length > 0) prId = prRows[0].id;
+                   profileByNikMap.set(p.nik, prId);
+                }
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
             } else {
                 // Update existing profile (from users) with info from peserta table if current is null
                 await pgClient.query(`
@@ -201,6 +262,7 @@ async function migrate() {
             const sLower = p.status?.toLowerCase();
             const status = sLower === 'diterima' ? 'active' : (sLower === 'cadangan' ? 'deactive' : p.status);
 
+<<<<<<< HEAD
             const id = uuidv4();
             await pgClient.query(`
                 INSERT INTO participants (
@@ -217,6 +279,30 @@ async function migrate() {
 
             partMap.set(p.no.toString(), id);
             partByIdTkmMap.set(p.id_tkm.toString(), id);
+=======
+            let paId = partByIdTkmMap.get(p.id_tkm?.toString());
+            if (!paId) {
+                paId = uuidv4();
+                await pgClient.query(`
+                    INSERT INTO participants (
+                        id, profile_id, batch_id, group_id, legacy_tkm_id, status, last_education, 
+                        disability_status, disability_type, current_activity, 
+                        submission_status, submission_date, registration_date, id_pendaftar, link_detail_tkm,
+                        created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+                    ON CONFLICT (legacy_tkm_id) DO NOTHING`,
+                    [paId, prId, batchMap.get(p.batch_pembekalan), null, p.id_tkm?.toString(), status, p.pendidikan_terakhir, 
+                     p.penyandang_disabilitas === 1, p.jenis_disabilitas, p.aktivitas_saat_ini,
+                     p.apakah_sudah_submit_pendaftaran, p.tanggal_submit_pendaftaran, p.tanggal_daftar, p.id_pendaftar, p.link_detail_tkm,
+                     p.created_at || new Date(), p.updated_at || new Date()]);
+                
+                // If it failed due to conflict, we might still not have it in map if it was added mid-run? 
+                // Unlikely but let's be safe.
+                partByIdTkmMap.set(p.id_tkm.toString(), paId);
+            }
+            
+            partMap.set(p.no.toString(), paId);
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
 
             // Create Address for Participant from KTP info
             if (p.alamat_ktp || p.kota_ktp || p.provinsi_ktp) {
@@ -272,11 +358,11 @@ async function migrate() {
             // Emergency Contacts
             if (p.nama_kerabat_1) {
                 await pgClient.query('INSERT INTO emergency_contacts (id, participant_id, legacy_tkm_id, full_name, phone_number, relationship, priority) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
-                    [uuidv4(), id, p.id_tkm?.toString(), p.nama_kerabat_1, p.no_kerabat_1, p.status_kerabat_1, 1]);
+                    [uuidv4(), paId, p.id_tkm?.toString(), p.nama_kerabat_1, p.no_kerabat_1, p.status_kerabat_1, 1]);
             }
             if (p.nama_kerabat_2) {
                 await pgClient.query('INSERT INTO emergency_contacts (id, participant_id, legacy_tkm_id, full_name, phone_number, relationship, priority) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
-                    [uuidv4(), id, p.id_tkm?.toString(), p.nama_kerabat_2, p.no_kerabat_2, p.status_kerabat_2, 2]);
+                    [uuidv4(), paId, p.id_tkm?.toString(), p.nama_kerabat_2, p.no_kerabat_2, p.status_kerabat_2, 2]);
             }
         }
 
@@ -300,6 +386,7 @@ async function migrate() {
 
                 // Handle documents from detail
                 if (d.bmcFile) {
+<<<<<<< HEAD
                     const docId = uuidv4();
                     await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
                         [docId, paId, 'participant', 'BMC', d.bmcFile]);
@@ -308,6 +395,12 @@ async function migrate() {
                     const docId = uuidv4();
                     await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
                         [docId, paId, 'participant', 'ACTION_PLAN', d.actionPlanFile]);
+=======
+                    await getOrCreateDocument(d.bmcFile, 'participant', 'BMC', paId);
+                }
+                if (d.actionPlanFile) {
+                    await getOrCreateDocument(d.actionPlanFile, 'participant', 'ACTION_PLAN', paId);
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
                 }
             }
         }
@@ -372,6 +465,7 @@ async function migrate() {
 
                     // Handle employee documents
                     if (e.ktp_url) {
+<<<<<<< HEAD
                         await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5)',
                             [uuidv4(), empId, 'business_employee', 'KTP', e.ktp_url]);
                     }
@@ -382,13 +476,22 @@ async function migrate() {
                     if (e.salary_slip_url) {
                         await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5)',
                             [uuidv4(), empId, 'business_employee', 'SALARY_SLIP', e.salary_slip_url]);
+=======
+                        await getOrCreateDocument(e.ktp_url, 'business_employee', 'KTP', empId);
+                    }
+                    if (e.bpjs_card_url) {
+                        await getOrCreateDocument(e.bpjs_card_url, 'business_employee', 'BPJS', empId);
+                    }
+                    if (e.salary_slip_url) {
+                        await getOrCreateDocument(e.salary_slip_url, 'business_employee', 'SALARY_SLIP', empId);
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
                     }
                 }
             }
         }
 
         console.log('Migrating Mentors...');
-        const [mList] = await mysqlConn.query('SELECT id_pendamping as id FROM logbook_harian UNION SELECT id_pendamping as id FROM capaian_output UNION SELECT admin_id as id FROM user_peserta');
+        const [mList] = await mysqlConn.query('SELECT id_pendamping as id FROM logbook_harian UNION SELECT id_pendamping as id FROM capaian_output UNION SELECT user_id as id FROM user_peserta WHERE user_id IS NOT NULL');
         const mentorMap = new Map();
         for (const m of mList) {
             if (m.id) {
@@ -401,14 +504,63 @@ async function migrate() {
             }
         }
 
-        console.log('Migrating Logbooks...');
-        const [mLogs] = await mysqlConn.query('SELECT * FROM logbook_harian');
+        console.log('Migrating Logbooks & Attendees (Merged by Activity)...');
+        const [mLogs] = await mysqlConn.query('SELECT * FROM logbook_harian ORDER BY logbookDate ASC, startTime ASC');
+        
+        // Map to store unique activities: key = mentor_id + date + start_time + end_time + mentoring_material
+        const activityMap = new Map();
+
         for (const lb of mLogs) {
             const meId = mentorMap.get(lb.id_pendamping.toString());
             const paId = partByIdTkmMap.get(lb.id_tkm.toString());
+            
             if (meId && paId) {
-                await pgClient.query('INSERT INTO logbooks (id, mentor_id, participant_id, legacy_tkm_id, activity_date, start_time, end_time, meeting_type, visit_type, delivery_method, mentoring_material, activity_summary, obstacles, solutions, is_verified, verification_note, expense_amount, no_expense_reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT DO NOTHING',
-                    [uuidv4(), meId, paId, lb.id_tkm?.toString(), lb.logbookDate, lb.startTime, lb.endTime, lb.meetingType, lb.visitType, lb.deliveryMethod, lb.mentoringMaterial, lb.activitySummary, lb.obstacle, lb.solutions, lb.verified, lb.note_verified, lb.totalExpense, lb.reasonNoExpense]);
+                // Create a unique key for the activity session
+                // We use mentor, date, and times. If times are missing, we use mentoring material as fallback
+                const activityKey = `${meId}_${lb.logbookDate}_${lb.startTime}_${lb.endTime}_${(lb.mentoringMaterial || '').substring(0, 50)}`;
+                
+                let lbId;
+                if (!activityMap.has(activityKey)) {
+                    lbId = uuidv4();
+                    await pgClient.query(`
+                        INSERT INTO logbooks (
+                            id, mentor_id, activity_date, start_time, end_time, 
+                            meeting_type, visit_type, delivery_method, mentoring_material, 
+                            activity_summary, obstacles, solutions, is_verified, 
+                            verification_note, expense_amount, no_expense_reason
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                        [
+                            lbId, meId, lb.logbookDate, lb.startTime, lb.endTime, 
+                            lb.meetingType, lb.visitType, lb.deliveryMethod, lb.mentoringMaterial, 
+                            lb.activitySummary, lb.obstacle, lb.solutions, lb.verified, 
+                            lb.note_verified, lb.totalExpense, lb.reasonNoExpense
+                        ]
+                    );
+                    activityMap.set(activityKey, lbId);
+                } else {
+                    lbId = activityMap.get(activityKey);
+                }
+
+                // Add Attendee (Link Participant to the Logbook entry)
+                await pgClient.query('INSERT INTO logbook_attendees (id, logbook_id, participant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+                    [uuidv4(), lbId, paId]);
+
+                // Collect and link all unique Documentation Files for this participant's row
+                if (lb.documentationFiles) {
+                    const files = lb.documentationFiles.split(';').map(f => f.trim()).filter(f => f);
+                    for (const fileUrl of files) {
+                        const docId = await getOrCreateDocument(fileUrl, 'logbook', 'DOCUMENTATION', lbId);
+                        await pgClient.query('INSERT INTO logbook_documents (document_id, logbook_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                            [docId, lbId]);
+                    }
+                }
+
+                // Collect and link Expense Proof
+                if (lb.expenseProofFile) {
+                    const docId = await getOrCreateDocument(lb.expenseProofFile, 'logbook', 'EXPENSE_PROOF', lbId);
+                    await pgClient.query('INSERT INTO logbook_documents (document_id, logbook_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                        [docId, lbId]);
+                }
             }
         }
 
@@ -421,6 +573,7 @@ async function migrate() {
                 const reportId = uuidv4();
                 await pgClient.query('INSERT INTO monthly_reports (id, participant_id, mentor_id, legacy_tkm_id, report_month, report_year, bookkeeping_cashflow, bookkeeping_income_statement, sales_volume, sales_unit, production_capacity, production_unit, marketing_area, revenue, business_condition, obstacles, note_confirmation, lpj_status, is_verified, verification_note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) ON CONFLICT DO NOTHING',
                     [reportId, paId, meId, r.id_tkm?.toString(), r.month_report, 2024, r.bookkeeping_cashflow === 'T', r.bookkeeping_income_statement === 'T', r.sales_volume, r.sales_volume_unit, r.production_capacity, r.production_capacity_unit, r.marketing_area, r.revenue, r.business_condition, r.obstacle, r.note_confirmation, r.lpj === 'T', r.isverified, r.note_verified]);
+<<<<<<< HEAD
 
                 // Migrate proof documents
                 if (r.cashflow_proof_url) {
@@ -431,6 +584,20 @@ async function migrate() {
                     await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
                         [uuidv4(), reportId, 'monthly_report', 'INCOME_PROOF', r.income_proof_url]);
                 }
+=======
+                 
+                 // Migrate proof documents
+                 if (r.cashflow_proof_url) {
+                     const docId = await getOrCreateDocument(r.cashflow_proof_url, 'monthly_report', 'CASHFLOW_PROOF', reportId);
+                     await pgClient.query('INSERT INTO monthly_report_documents (document_id, monthly_report_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                         [docId, reportId]);
+                 }
+                 if (r.income_proof_url) {
+                     const docId = await getOrCreateDocument(r.income_proof_url, 'monthly_report', 'INCOME_PROOF', reportId);
+                     await pgClient.query('INSERT INTO monthly_report_documents (document_id, monthly_report_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                         [docId, reportId]);
+                 }
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
             }
         }
 
@@ -442,22 +609,30 @@ async function migrate() {
             await pgClient.query('INSERT INTO upload_reports (id, admin_user_id, note, verified, created_at, updated_at, legacy_id) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
                 [urId, adminUserId, r.note, r.verified === 'T', r.created_at, r.updated_at, r.id]);
             if (r.link_report) {
-                const docId = uuidv4();
-                await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
-                    [docId, urId, 'upload_report', 'REPORT', r.link_report]);
+                const docId = await getOrCreateDocument(r.link_report, 'upload_report', 'REPORT', urId);
                 await pgClient.query('INSERT INTO upload_report_documents (document_id, upload_report_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                     [docId, urId]);
             }
         }
 
-        console.log('Migrating Mentor Assignments...');
+        console.log('Migrating Mentor Assignments & University Links...');
         const [mAss] = await mysqlConn.query('SELECT * FROM user_peserta');
         for (const a of mAss) {
-            const meId = mentorMap.get(a.admin_id.toString());
+            const meId = a.user_id ? mentorMap.get(a.user_id.toString()) : null;
             const paId = partByIdTkmMap.get(a.id_tkm.toString());
-            if (meId && paId) {
-                await pgClient.query('INSERT INTO mentor_participants (id, mentor_id, participant_id, legacy_tkm_id, assignment_status, batch_year, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING',
-                    [uuidv4(), meId, paId, a.id_tkm?.toString(), a.status_peserta, a.batch, a.created_at, a.updated_at]);
+            const unId = a.admin_id ? userToUnivMap.get(a.admin_id.toString()) : null;
+
+            if (paId) {
+                // Link Participant to University Pendamping
+                if (unId) {
+                    await pgClient.query('UPDATE participants SET university_id = $1 WHERE id = $2', [unId, paId]);
+                }
+
+                // Link Participant to Mentor
+                if (meId) {
+                    await pgClient.query('INSERT INTO mentor_participants (id, mentor_id, participant_id, legacy_tkm_id, assignment_status, batch_year, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING',
+                        [uuidv4(), meId, paId, a.id_tkm?.toString(), a.status_peserta, a.batch, a.created_at, a.updated_at]);
+                }
             }
         }
 
@@ -488,10 +663,15 @@ async function migrate() {
 
                 for (const d of docs) {
                     if (d.url && d.id) {
+<<<<<<< HEAD
                         const docId = uuidv4();
                         await pgClient.query('INSERT INTO documents (id, entity_id, entity_type, label, file_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
                             [docId, d.id, d.entity, d.label, d.url]);
 
+=======
+                        const docId = await getOrCreateDocument(d.url, d.entity, d.label, d.id);
+                        
+>>>>>>> 099c4483fbec19b1858ac3ba7e65e95aee196049
                         if (d.entity === 'participant') {
                             await pgClient.query('INSERT INTO participant_documents (document_id, participant_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [docId, d.id]);
                         } else if (d.entity === 'business') {
